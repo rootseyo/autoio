@@ -1,4 +1,4 @@
-"""Interruptible, rate-limited mouse auto-clicking."""
+"""Interruptible mouse auto-clicking at a fixed or freely moving cursor."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ FinishCallback = Callable[[str | None, bool, int], None]
 
 
 class AutoClickController:
-    """Click the left mouse button at one position from a worker thread."""
+    """Click the left mouse button from a worker thread."""
 
-    MIN_CPS = 0.1
-    MAX_CPS = 100.0
+    MIN_INTERVAL_MS = 1.0
+    MAX_INTERVAL_MS = 60_000.0
 
     def __init__(self, mouse_controller: object | None = None) -> None:
         self.mouse = mouse_controller or mouse.Controller()
@@ -31,22 +31,26 @@ class AutoClickController:
 
     def start(
         self,
-        position: tuple[int, int],
+        position: tuple[int, int] | None,
         repeat: int,
-        clicks_per_second: float,
+        interval_ms: float,
         finished: FinishCallback,
     ) -> None:
         if self.active:
             raise RuntimeError("auto click is already running")
-        if repeat != -1 and repeat < 1:
-            raise ValueError("repeat must be a positive integer or -1")
-        if not self.MIN_CPS <= clicks_per_second <= self.MAX_CPS:
-            raise ValueError(f"click speed must be between {self.MIN_CPS} and {self.MAX_CPS} CPS")
+        if repeat < -1:
+            raise ValueError("repeat must be a positive integer, 0, or -1")
+        if not self.MIN_INTERVAL_MS <= interval_ms <= self.MAX_INTERVAL_MS:
+            raise ValueError(
+                f"click interval must be between {self.MIN_INTERVAL_MS:g} "
+                f"and {self.MAX_INTERVAL_MS:g} milliseconds"
+            )
 
+        normalized_repeat = -1 if repeat == 0 else repeat
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run,
-            args=(position, repeat, clicks_per_second, finished),
+            args=(position, normalized_repeat, interval_ms, finished),
             name="auto-click",
             daemon=True,
         )
@@ -57,20 +61,21 @@ class AutoClickController:
 
     def _run(
         self,
-        position: tuple[int, int],
+        position: tuple[int, int] | None,
         repeat: int,
-        clicks_per_second: float,
+        interval_ms: float,
         finished: FinishCallback,
     ) -> None:
         error: str | None = None
         completed = 0
-        interval = 1.0 / clicks_per_second
+        interval = interval_ms / 1000.0
         deadline = time.monotonic()
         try:
             while not self._stop.is_set() and (repeat == -1 or completed < repeat):
                 if self._stop.wait(max(0.0, deadline - time.monotonic())):
                     break
-                self.mouse.position = position
+                if position is not None:
+                    self.mouse.position = position
                 self.mouse.click(mouse.Button.left)
                 completed += 1
                 deadline = max(deadline + interval, time.monotonic())

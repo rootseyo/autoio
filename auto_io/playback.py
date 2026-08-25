@@ -32,12 +32,13 @@ class PlaybackController:
     def start(self, events: list[dict], repeat: int, log: LogCallback, finished: FinishCallback) -> None:
         if self.active:
             raise RuntimeError("playback is already running")
-        if repeat != -1 and repeat < 1:
-            raise ValueError("repeat must be a positive integer or -1")
+        if repeat < -1:
+            raise ValueError("repeat must be a positive integer, 0, or -1")
+        normalized_repeat = -1 if repeat == 0 else repeat
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run,
-            args=(events, repeat, log, finished),
+            args=(events, normalized_repeat, log, finished),
             name="macro-playback",
             daemon=True,
         )

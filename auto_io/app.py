@@ -13,7 +13,11 @@ from typing import Any
 import customtkinter as ctk
 
 from .events import MacroFormatError
-from .platform_support import macos_accessibility_granted, prepare_macos_accessibility_imports
+from .platform_support import (
+    macos_accessibility_granted,
+    prepare_macos_accessibility_imports,
+    prepare_macos_keyboard_listener,
+)
 from .storage import MacroStore
 
 prepare_macos_accessibility_imports()
@@ -25,10 +29,20 @@ from .playback import PlaybackController  # noqa: E402
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
+RECORD_COLOR = "#AD6670"
+RECORD_HOVER_COLOR = "#97545E"
+PLAY_COLOR = "#56806E"
+PLAY_HOVER_COLOR = "#456E5D"
+MACRO_COLOR = "#667EAA"
+MACRO_HOVER_COLOR = "#536B97"
+AUTOCLICK_COLOR = "#806CA3"
+AUTOCLICK_HOVER_COLOR = "#6D598F"
+
 
 class AutoIOApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
+        prepare_macos_keyboard_listener()
         self.title("AutoIO")
         self.geometry("920x780")
         self.minsize(820, 680)
@@ -78,16 +92,40 @@ class AutoIOApp(ctk.CTk):
         left.grid_rowconfigure(5, weight=1)
 
         self.record_button = ctk.CTkButton(
-            left, text="Record", height=46, fg_color="#D92D20", hover_color="#B42318", command=self.toggle_recording
+            left,
+            text="Record",
+            height=46,
+            fg_color=RECORD_COLOR,
+            hover_color=RECORD_HOVER_COLOR,
+            command=self.toggle_recording,
         )
         self.record_button.grid(row=0, column=0, sticky="ew", padx=(18, 8), pady=(18, 10))
-        self.play_button = ctk.CTkButton(left, text="Play", height=46, command=self.toggle_playback)
+        self.play_button = ctk.CTkButton(
+            left,
+            text="Play",
+            height=46,
+            fg_color=PLAY_COLOR,
+            hover_color=PLAY_HOVER_COLOR,
+            command=self.toggle_playback,
+        )
         self.play_button.grid(row=0, column=1, sticky="ew", padx=(8, 18), pady=(18, 10))
 
-        ctk.CTkButton(left, text="Save macro", command=self.save_current).grid(
+        ctk.CTkButton(
+            left,
+            text="Save macro",
+            fg_color=MACRO_COLOR,
+            hover_color=MACRO_HOVER_COLOR,
+            command=self.save_current,
+        ).grid(
             row=1, column=0, sticky="ew", padx=(18, 8), pady=8
         )
-        ctk.CTkButton(left, text="Import JSON", command=self.import_macro).grid(
+        ctk.CTkButton(
+            left,
+            text="Import JSON",
+            fg_color=MACRO_COLOR,
+            hover_color=MACRO_HOVER_COLOR,
+            command=self.import_macro,
+        ).grid(
             row=1, column=1, sticky="ew", padx=(8, 18), pady=8
         )
 
@@ -96,13 +134,29 @@ class AutoIOApp(ctk.CTk):
         ctk.CTkLabel(settings, text="Repeat").pack(side="left")
         self.repeat_entry = ctk.CTkEntry(settings, width=70, justify="center")
         self.repeat_entry.insert(0, "1")
-        self.repeat_entry.pack(side="left", padx=(8, 20))
+        self.repeat_entry.pack(side="left", padx=(8, 8))
+        ctk.CTkLabel(
+            settings,
+            text="0/-1 = unlimited",
+            text_color=("#667085", "#98A2B3"),
+            font=ctk.CTkFont(size=11),
+        ).pack(side="left", padx=(0, 8))
         self.record_hotkey_button = ctk.CTkButton(
-            settings, width=105, text="Record: F8", command=lambda: self._assign_hotkey("record")
+            settings,
+            width=105,
+            text="Record: F8",
+            fg_color=RECORD_COLOR,
+            hover_color=RECORD_HOVER_COLOR,
+            command=lambda: self._assign_hotkey("record"),
         )
         self.record_hotkey_button.pack(side="left", padx=4)
         self.play_hotkey_button = ctk.CTkButton(
-            settings, width=105, text="Play: F9", command=lambda: self._assign_hotkey("play")
+            settings,
+            width=105,
+            text="Play: F9",
+            fg_color=PLAY_COLOR,
+            hover_color=PLAY_HOVER_COLOR,
+            command=lambda: self._assign_hotkey("play"),
         )
         self.play_hotkey_button.pack(side="left", padx=4)
 
@@ -135,20 +189,22 @@ class AutoIOApp(ctk.CTk):
         )
         self.autoclick_mode = ctk.CTkSegmentedButton(
             card,
-            values=["Saved position", "Cursor after 3s"],
+            values=["Fixed position", "Free click"],
+            selected_color=AUTOCLICK_COLOR,
+            selected_hover_color=AUTOCLICK_HOVER_COLOR,
             command=self._autoclick_mode_changed,
         )
-        self.autoclick_mode.set("Cursor after 3s")
+        self.autoclick_mode.set("Free click")
         self.autoclick_mode.grid(row=0, column=1, columnspan=3, sticky="ew", padx=12, pady=(10, 4))
 
         ctk.CTkLabel(card, text="Clicks").grid(row=1, column=0, sticky="e", padx=(10, 4), pady=4)
         self.autoclick_repeat_entry = ctk.CTkEntry(card, width=70, justify="center")
         self.autoclick_repeat_entry.insert(0, "10")
         self.autoclick_repeat_entry.grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=4)
-        ctk.CTkLabel(card, text="Speed (CPS)").grid(row=1, column=2, sticky="e", padx=(10, 4), pady=4)
-        self.autoclick_speed_entry = ctk.CTkEntry(card, width=70, justify="center")
-        self.autoclick_speed_entry.insert(0, "10")
-        self.autoclick_speed_entry.grid(row=1, column=3, sticky="ew", padx=(0, 12), pady=4)
+        ctk.CTkLabel(card, text="Interval (ms)").grid(row=1, column=2, sticky="e", padx=(10, 4), pady=4)
+        self.autoclick_interval_entry = ctk.CTkEntry(card, width=70, justify="center")
+        self.autoclick_interval_entry.insert(0, "100")
+        self.autoclick_interval_entry.grid(row=1, column=3, sticky="ew", padx=(0, 12), pady=4)
 
         ctk.CTkLabel(card, text="Position").grid(row=2, column=0, sticky="e", padx=(10, 4), pady=4)
         position = ctk.CTkFrame(card, fg_color="transparent")
@@ -160,20 +216,37 @@ class AutoIOApp(ctk.CTk):
         self.capture_position_button = ctk.CTkButton(
             position,
             text="Capture in 3s",
+            fg_color=AUTOCLICK_COLOR,
+            hover_color=AUTOCLICK_HOVER_COLOR,
             command=self._capture_position,
         )
         self.capture_position_button.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-        self.autoclick_button = ctk.CTkButton(card, text="Start auto click", command=self.toggle_autoclick)
-        self.autoclick_button.grid(row=3, column=0, columnspan=3, sticky="ew", padx=(12, 4), pady=(4, 10))
+        ctk.CTkLabel(
+            card,
+            text="Enter 0 or -1 for unlimited clicks",
+            text_color=("#667085", "#98A2B3"),
+            font=ctk.CTkFont(size=12),
+        ).grid(row=3, column=0, columnspan=4, pady=(2, 4))
+
+        self.autoclick_button = ctk.CTkButton(
+            card,
+            text="Start auto click",
+            fg_color=AUTOCLICK_COLOR,
+            hover_color=AUTOCLICK_HOVER_COLOR,
+            command=self.toggle_autoclick,
+        )
+        self.autoclick_button.grid(row=4, column=0, columnspan=3, sticky="ew", padx=(12, 4), pady=(4, 10))
         self.autoclick_hotkey_button = ctk.CTkButton(
             card,
             text="Hotkey: F10",
             width=105,
+            fg_color=AUTOCLICK_COLOR,
+            hover_color=AUTOCLICK_HOVER_COLOR,
             command=lambda: self._assign_hotkey("autoclick"),
         )
-        self.autoclick_hotkey_button.grid(row=3, column=3, sticky="ew", padx=(4, 12), pady=(4, 10))
-        self._autoclick_mode_changed("Cursor after 3s")
+        self.autoclick_hotkey_button.grid(row=4, column=3, sticky="ew", padx=(4, 12), pady=(4, 10))
+        self._autoclick_mode_changed("Free click")
 
     def _start_listeners(self) -> None:
         self.keyboard_listener = keyboard.Listener(on_press=self._key_press, on_release=self._key_release)
@@ -269,7 +342,7 @@ class AutoIOApp(ctk.CTk):
             self.record_button.configure(text="Stop recording")
             self.play_button.configure(state="disabled")
             self.autoclick_button.configure(state="disabled")
-            self._set_status("● RECORDING", "#D92D20")
+            self._set_status("● RECORDING", RECORD_COLOR)
             self._log("Recording started")
         else:
             self.record_button.configure(text="Record")
@@ -289,16 +362,17 @@ class AutoIOApp(ctk.CTk):
             return
         try:
             repeat = int(self.repeat_entry.get().strip() or "1")
-            if repeat != -1 and repeat < 1:
+            if repeat < -1:
                 raise ValueError
         except ValueError:
-            messagebox.showerror("Invalid repeat", "Enter a positive integer, or -1 for infinite playback.")
+            messagebox.showerror("Invalid repeat", "Enter a positive integer, 0, or -1 for unlimited playback.")
             return
+        repeat = -1 if repeat == 0 else repeat
 
         self.record_button.configure(state="disabled")
         self.autoclick_button.configure(state="disabled")
         self.play_button.configure(text="Stop")
-        self._set_status("● PLAYING", "#039855")
+        self._set_status("● PLAYING", PLAY_COLOR)
         with self._event_lock:
             events = self.events.copy()
         self.playback.start(events, repeat, self._thread_log, self._playback_finished)
@@ -318,7 +392,7 @@ class AutoIOApp(ctk.CTk):
             self._log("Playback stopped" if stopped else "Playback finished")
 
     def _autoclick_mode_changed(self, mode: str) -> None:
-        state = "normal" if mode == "Saved position" else "disabled"
+        state = "normal" if mode == "Fixed position" else "disabled"
         self.autoclick_x_entry.configure(state=state)
         self.autoclick_y_entry.configure(state=state)
         self.capture_position_button.configure(state=state)
@@ -354,14 +428,14 @@ class AutoIOApp(ctk.CTk):
         options = self._read_autoclick_options()
         if options is None:
             return
-        repeat, clicks_per_second = options
-        if self.autoclick_mode.get() == "Saved position":
+        repeat, interval_ms = options
+        if self.autoclick_mode.get() == "Fixed position":
             try:
                 position = (int(self.autoclick_x_entry.get()), int(self.autoclick_y_entry.get()))
             except ValueError:
                 messagebox.showerror("Invalid position", "Enter integer X and Y coordinates or capture a position.")
                 return
-            self._start_autoclick(position, repeat, clicks_per_second)
+            self._start_autoclick(position, repeat, interval_ms)
             return
 
         self._autoclick_pending = True
@@ -369,50 +443,55 @@ class AutoIOApp(ctk.CTk):
         self.play_button.configure(state="disabled")
         self.autoclick_button.configure(text="Cancel countdown")
         self._set_status("● AUTO CLICK IN 3s", "#F79009")
-        self._log("Move the cursor to the click position (starting in 3 seconds)")
+        self._log("Free click starts in 3 seconds; move the cursor outside AutoIO")
         self._autoclick_after_id = self.after(
             3000,
-            self._start_autoclick_at_cursor,
+            self._start_free_autoclick,
             repeat,
-            clicks_per_second,
+            interval_ms,
         )
 
     def _read_autoclick_options(self) -> tuple[int, float] | None:
         try:
             repeat = int(self.autoclick_repeat_entry.get().strip())
-            clicks_per_second = float(self.autoclick_speed_entry.get().strip())
-            if repeat != -1 and repeat < 1:
+            interval_ms = float(self.autoclick_interval_entry.get().strip())
+            if repeat < -1:
                 raise ValueError
-            if not self.autoclick.MIN_CPS <= clicks_per_second <= self.autoclick.MAX_CPS:
+            if not self.autoclick.MIN_INTERVAL_MS <= interval_ms <= self.autoclick.MAX_INTERVAL_MS:
                 raise ValueError
         except ValueError:
             messagebox.showerror(
                 "Invalid auto-click settings",
-                "Clicks must be a positive integer or -1. Speed must be between 0.1 and 100 CPS.",
+                "Clicks must be a positive integer, 0, or -1. Interval must be between 1 and 60000 ms.",
             )
             return None
-        return repeat, clicks_per_second
+        return (-1 if repeat == 0 else repeat), interval_ms
 
-    def _start_autoclick_at_cursor(self, repeat: int, clicks_per_second: float) -> None:
+    def _start_free_autoclick(self, repeat: int, interval_ms: float) -> None:
         self._autoclick_pending = False
         self._autoclick_after_id = None
-        x, y = self.autoclick.mouse.position
-        self._start_autoclick((int(x), int(y)), repeat, clicks_per_second)
+        self._start_autoclick(None, repeat, interval_ms)
 
-    def _start_autoclick(self, position: tuple[int, int], repeat: int, clicks_per_second: float) -> None:
-        if self._inside_app(*position):
+    def _start_autoclick(
+        self,
+        position: tuple[int, int] | None,
+        repeat: int,
+        interval_ms: float,
+    ) -> None:
+        if position is not None and self._inside_app(*position):
             self._restore_autoclick_ui()
             messagebox.showwarning("Unsafe position", "Move the cursor outside the AutoIO window and try again.")
             return
         self.record_button.configure(state="disabled")
         self.play_button.configure(state="disabled")
         self.autoclick_button.configure(text="Stop auto click")
-        self._set_status("● AUTO CLICKING", "#7A5AF8")
+        self._set_status("● AUTO CLICKING", AUTOCLICK_COLOR)
+        location = f"at {position[0]}, {position[1]}" if position is not None else "at the current cursor"
         self._log(
-            f"Auto click started at {position[0]}, {position[1]} "
-            f"({repeat if repeat != -1 else 'infinite'} clicks, {clicks_per_second:g} CPS)"
+            f"Auto click started {location} "
+            f"({repeat if repeat != -1 else 'infinite'} clicks, {interval_ms:g} ms interval)"
         )
-        self.autoclick.start(position, repeat, clicks_per_second, self._autoclick_finished)
+        self.autoclick.start(position, repeat, interval_ms, self._autoclick_finished)
 
     def _cancel_autoclick_countdown(self) -> None:
         if self._autoclick_after_id:
@@ -549,14 +628,19 @@ class AutoIOApp(ctk.CTk):
                 command=lambda item=path: self._load_saved(item),
             ).pack(side="left", fill="x", expand=True, padx=4, pady=4)
             ctk.CTkButton(
-                row, text="▶", width=34, command=lambda item=path: self._load_saved(item, True)
+                row,
+                text="▶",
+                width=34,
+                fg_color=PLAY_COLOR,
+                hover_color=PLAY_HOVER_COLOR,
+                command=lambda item=path: self._load_saved(item, True),
             ).pack(side="left", padx=2)
             ctk.CTkButton(
                 row,
                 text="×",
                 width=34,
-                fg_color="#D92D20",
-                hover_color="#B42318",
+                fg_color=RECORD_COLOR,
+                hover_color=RECORD_HOVER_COLOR,
                 command=lambda item=path: self._delete_saved(item),
             ).pack(side="left", padx=(2, 4))
 
