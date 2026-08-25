@@ -1,0 +1,61 @@
+name: Build applications
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[build]"
+      - name: Test
+        run: python -m unittest discover -s tests -v
+      - name: Build macOS app
+        if: runner.os == 'macOS'
+        run: |
+          python -m PyInstaller --clean --noconfirm --windowed --collect-all customtkinter --osx-bundle-identifier io.github.rootseyo.autoio --name AutoIO auto_kb_mouse.py
+          APP_VERSION="$(python -c 'from auto_io import __version__; print(__version__)')"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" dist/AutoIO.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${APP_VERSION}" dist/AutoIO.app/Contents/Info.plist
+          codesign --force --deep --sign - dist/AutoIO.app
+          ditto -c -k --sequesterRsrc --keepParent dist/AutoIO.app dist/AutoIO-macOS.zip
+      - name: Build Windows app
+        if: runner.os == 'Windows'
+        run: python -m PyInstaller --clean --noconfirm --onefile --windowed --collect-all customtkinter --name AutoIO-Windows auto_kb_mouse.py
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'macOS'
+        with:
+          name: AutoIO-macOS
+          path: dist/AutoIO-macOS.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Windows'
+        with:
+          name: AutoIO-Windows
+          path: dist/AutoIO-Windows.exe
+          if-no-files-found: error
+      - name: Attach macOS app to release
+        if: github.event_name == 'release' && runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/AutoIO-macOS.zip --clobber
+      - name: Attach Windows app to release
+        if: github.event_name == 'release' && runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/AutoIO-Windows.exe --clobber
