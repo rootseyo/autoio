@@ -19,6 +19,7 @@ from .storage import MacroStore
 prepare_macos_accessibility_imports()
 from pynput import keyboard, mouse  # noqa: E402
 
+from .autoclick import AutoClickController  # noqa: E402
 from .playback import PlaybackController  # noqa: E402
 
 ctk.set_appearance_mode("system")
@@ -29,17 +30,22 @@ class AutoIOApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.title("AutoIO")
-        self.geometry("900x680")
-        self.minsize(780, 580)
+        self.geometry("920x780")
+        self.minsize(820, 680)
 
         self.store = MacroStore()
         self.playback = PlaybackController()
+        self.autoclick = AutoClickController()
         self.events: list[dict[str, Any]] = []
         self.recording = False
         self.recording_started = 0.0
         self.record_hotkey = "f8"
         self.play_hotkey = "f9"
+        self.autoclick_hotkey = "f10"
         self.assigning_hotkey: str | None = None
+        self._autoclick_pending = False
+        self._autoclick_after_id: str | None = None
+        self._capture_after_id: str | None = None
         self._hotkeys_down: set[str] = set()
         self._event_lock = threading.Lock()
         self._ui_queue: queue.Queue[tuple[Callable[..., None], tuple[Any, ...]]] = queue.Queue()
@@ -69,7 +75,7 @@ class AutoIOApp(ctk.CTk):
         left = ctk.CTkFrame(self)
         left.grid(row=1, column=0, sticky="nsew", padx=(24, 8), pady=(8, 24))
         left.grid_columnconfigure((0, 1), weight=1)
-        left.grid_rowconfigure(4, weight=1)
+        left.grid_rowconfigure(5, weight=1)
 
         self.record_button = ctk.CTkButton(
             left, text="Record", height=46, fg_color="#D92D20", hover_color="#B42318", command=self.toggle_recording
@@ -100,11 +106,13 @@ class AutoIOApp(ctk.CTk):
         )
         self.play_hotkey_button.pack(side="left", padx=4)
 
+        self._build_autoclick_ui(left)
+
         ctk.CTkLabel(left, text="Activity", font=ctk.CTkFont(weight="bold")).grid(
-            row=3, column=0, columnspan=2, sticky="w", padx=18, pady=(8, 4)
+            row=4, column=0, columnspan=2, sticky="w", padx=18, pady=(8, 4)
         )
         self.log_box = ctk.CTkTextbox(left, state="disabled")
-        self.log_box.grid(row=4, column=0, columnspan=2, sticky="nsew", padx=18, pady=(0, 18))
+        self.log_box.grid(row=5, column=0, columnspan=2, sticky="nsew", padx=18, pady=(0, 18))
 
         right = ctk.CTkFrame(self)
         right.grid(row=1, column=1, sticky="nsew", padx=(8, 24), pady=(8, 24))
@@ -116,6 +124,56 @@ class AutoIOApp(ctk.CTk):
         self.macro_list = ctk.CTkScrollableFrame(right, fg_color="transparent")
         self.macro_list.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
         self._refresh_macros()
+
+    def _build_autoclick_ui(self, parent: ctk.CTkFrame) -> None:
+        card = ctk.CTkFrame(parent)
+        card.grid(row=3, column=0, columnspan=2, sticky="ew", padx=18, pady=(4, 6))
+        card.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        ctk.CTkLabel(card, text="Auto click", font=ctk.CTkFont(weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=12, pady=(10, 4)
+        )
+        self.autoclick_mode = ctk.CTkSegmentedButton(
+            card,
+            values=["Saved position", "Cursor after 3s"],
+            command=self._autoclick_mode_changed,
+        )
+        self.autoclick_mode.set("Cursor after 3s")
+        self.autoclick_mode.grid(row=0, column=1, columnspan=3, sticky="ew", padx=12, pady=(10, 4))
+
+        ctk.CTkLabel(card, text="Clicks").grid(row=1, column=0, sticky="e", padx=(10, 4), pady=4)
+        self.autoclick_repeat_entry = ctk.CTkEntry(card, width=70, justify="center")
+        self.autoclick_repeat_entry.insert(0, "10")
+        self.autoclick_repeat_entry.grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=4)
+        ctk.CTkLabel(card, text="Speed (CPS)").grid(row=1, column=2, sticky="e", padx=(10, 4), pady=4)
+        self.autoclick_speed_entry = ctk.CTkEntry(card, width=70, justify="center")
+        self.autoclick_speed_entry.insert(0, "10")
+        self.autoclick_speed_entry.grid(row=1, column=3, sticky="ew", padx=(0, 12), pady=4)
+
+        ctk.CTkLabel(card, text="Position").grid(row=2, column=0, sticky="e", padx=(10, 4), pady=4)
+        position = ctk.CTkFrame(card, fg_color="transparent")
+        position.grid(row=2, column=1, columnspan=3, sticky="ew", padx=(0, 12), pady=4)
+        self.autoclick_x_entry = ctk.CTkEntry(position, width=70, placeholder_text="X", justify="center")
+        self.autoclick_x_entry.pack(side="left", padx=(0, 4))
+        self.autoclick_y_entry = ctk.CTkEntry(position, width=70, placeholder_text="Y", justify="center")
+        self.autoclick_y_entry.pack(side="left", padx=4)
+        self.capture_position_button = ctk.CTkButton(
+            position,
+            text="Capture in 3s",
+            command=self._capture_position,
+        )
+        self.capture_position_button.pack(side="left", fill="x", expand=True, padx=(4, 0))
+
+        self.autoclick_button = ctk.CTkButton(card, text="Start auto click", command=self.toggle_autoclick)
+        self.autoclick_button.grid(row=3, column=0, columnspan=3, sticky="ew", padx=(12, 4), pady=(4, 10))
+        self.autoclick_hotkey_button = ctk.CTkButton(
+            card,
+            text="Hotkey: F10",
+            width=105,
+            command=lambda: self._assign_hotkey("autoclick"),
+        )
+        self.autoclick_hotkey_button.grid(row=3, column=3, sticky="ew", padx=(4, 12), pady=(4, 10))
+        self._autoclick_mode_changed("Cursor after 3s")
 
     def _start_listeners(self) -> None:
         self.keyboard_listener = keyboard.Listener(on_press=self._key_press, on_release=self._key_release)
@@ -146,20 +204,23 @@ class AutoIOApp(ctk.CTk):
         if self.assigning_hotkey:
             self._post_ui(self._finish_hotkey_assignment, name)
             return
-        if name in {self.record_hotkey, self.play_hotkey}:
+        hotkeys = {self.record_hotkey, self.play_hotkey, self.autoclick_hotkey}
+        if name in hotkeys:
             if name not in self._hotkeys_down:
                 self._hotkeys_down.add(name)
-                if name == self.record_hotkey and not self.playback.active:
+                if name == self.record_hotkey and not self.playback.active and not self.autoclick.active:
                     self._post_ui(self.toggle_recording)
                 elif name == self.play_hotkey:
                     self._post_ui(self.toggle_playback)
+                elif name == self.autoclick_hotkey:
+                    self._post_ui(self.toggle_autoclick)
             return
         if self.recording and not self._app_has_focus:
             self._append_event("key_down", key=self._serialize_key(key))
 
     def _key_release(self, key: Any) -> None:
         name = self._key_name(key)
-        if name in {self.record_hotkey, self.play_hotkey}:
+        if name in {self.record_hotkey, self.play_hotkey, self.autoclick_hotkey}:
             self._hotkeys_down.discard(name)
             return
         if self.recording and not self.assigning_hotkey and not self._app_has_focus:
@@ -198,7 +259,7 @@ class AutoIOApp(ctk.CTk):
             self.events.append({"type": event_type, "time": time.monotonic() - self.recording_started, **values})
 
     def toggle_recording(self) -> None:
-        if self.playback.active:
+        if self.playback.active or self.autoclick.active or self._autoclick_pending:
             return
         self.recording = not self.recording
         if self.recording:
@@ -207,11 +268,13 @@ class AutoIOApp(ctk.CTk):
                 self.recording_started = time.monotonic()
             self.record_button.configure(text="Stop recording")
             self.play_button.configure(state="disabled")
+            self.autoclick_button.configure(state="disabled")
             self._set_status("● RECORDING", "#D92D20")
             self._log("Recording started")
         else:
             self.record_button.configure(text="Record")
             self.play_button.configure(state="normal")
+            self.autoclick_button.configure(state="normal")
             self._set_status("● READY", ("#667085", "#98A2B3"))
             self._log(f"Recording stopped ({len(self.events)} events)")
 
@@ -219,7 +282,7 @@ class AutoIOApp(ctk.CTk):
         if self.playback.active:
             self.playback.stop()
             return
-        if self.recording:
+        if self.recording or self.autoclick.active or self._autoclick_pending:
             return
         if not self.events:
             messagebox.showwarning("Nothing to play", "Record or load a macro first.")
@@ -233,6 +296,7 @@ class AutoIOApp(ctk.CTk):
             return
 
         self.record_button.configure(state="disabled")
+        self.autoclick_button.configure(state="disabled")
         self.play_button.configure(text="Stop")
         self._set_status("● PLAYING", "#039855")
         with self._event_lock:
@@ -244,6 +308,7 @@ class AutoIOApp(ctk.CTk):
 
     def _finish_playback_ui(self, error: str | None, stopped: bool) -> None:
         self.record_button.configure(state="normal")
+        self.autoclick_button.configure(state="normal")
         self.play_button.configure(text="Play")
         self._set_status("● READY", ("#667085", "#98A2B3"))
         if error:
@@ -252,26 +317,160 @@ class AutoIOApp(ctk.CTk):
         else:
             self._log("Playback stopped" if stopped else "Playback finished")
 
+    def _autoclick_mode_changed(self, mode: str) -> None:
+        state = "normal" if mode == "Saved position" else "disabled"
+        self.autoclick_x_entry.configure(state=state)
+        self.autoclick_y_entry.configure(state=state)
+        self.capture_position_button.configure(state=state)
+
+    def _capture_position(self) -> None:
+        if self._capture_after_id or self.autoclick.active or self._autoclick_pending:
+            return
+        self.capture_position_button.configure(text="Move cursor…", state="disabled")
+        self._log("Cursor position will be captured in 3 seconds")
+        self._capture_after_id = self.after(3000, self._complete_position_capture)
+
+    def _complete_position_capture(self) -> None:
+        self._capture_after_id = None
+        x, y = self.autoclick.mouse.position
+        for entry, value in ((self.autoclick_x_entry, x), (self.autoclick_y_entry, y)):
+            entry.configure(state="normal")
+            entry.delete(0, "end")
+            entry.insert(0, str(int(value)))
+        self.capture_position_button.configure(text="Capture in 3s", state="normal")
+        self._autoclick_mode_changed(self.autoclick_mode.get())
+        self._log(f"Saved auto-click position: {int(x)}, {int(y)}")
+
+    def toggle_autoclick(self) -> None:
+        if self.autoclick.active:
+            self.autoclick.stop()
+            return
+        if self._autoclick_pending:
+            self._cancel_autoclick_countdown()
+            return
+        if self.recording or self.playback.active:
+            return
+
+        options = self._read_autoclick_options()
+        if options is None:
+            return
+        repeat, clicks_per_second = options
+        if self.autoclick_mode.get() == "Saved position":
+            try:
+                position = (int(self.autoclick_x_entry.get()), int(self.autoclick_y_entry.get()))
+            except ValueError:
+                messagebox.showerror("Invalid position", "Enter integer X and Y coordinates or capture a position.")
+                return
+            self._start_autoclick(position, repeat, clicks_per_second)
+            return
+
+        self._autoclick_pending = True
+        self.record_button.configure(state="disabled")
+        self.play_button.configure(state="disabled")
+        self.autoclick_button.configure(text="Cancel countdown")
+        self._set_status("● AUTO CLICK IN 3s", "#F79009")
+        self._log("Move the cursor to the click position (starting in 3 seconds)")
+        self._autoclick_after_id = self.after(
+            3000,
+            self._start_autoclick_at_cursor,
+            repeat,
+            clicks_per_second,
+        )
+
+    def _read_autoclick_options(self) -> tuple[int, float] | None:
+        try:
+            repeat = int(self.autoclick_repeat_entry.get().strip())
+            clicks_per_second = float(self.autoclick_speed_entry.get().strip())
+            if repeat != -1 and repeat < 1:
+                raise ValueError
+            if not self.autoclick.MIN_CPS <= clicks_per_second <= self.autoclick.MAX_CPS:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror(
+                "Invalid auto-click settings",
+                "Clicks must be a positive integer or -1. Speed must be between 0.1 and 100 CPS.",
+            )
+            return None
+        return repeat, clicks_per_second
+
+    def _start_autoclick_at_cursor(self, repeat: int, clicks_per_second: float) -> None:
+        self._autoclick_pending = False
+        self._autoclick_after_id = None
+        x, y = self.autoclick.mouse.position
+        self._start_autoclick((int(x), int(y)), repeat, clicks_per_second)
+
+    def _start_autoclick(self, position: tuple[int, int], repeat: int, clicks_per_second: float) -> None:
+        if self._inside_app(*position):
+            self._restore_autoclick_ui()
+            messagebox.showwarning("Unsafe position", "Move the cursor outside the AutoIO window and try again.")
+            return
+        self.record_button.configure(state="disabled")
+        self.play_button.configure(state="disabled")
+        self.autoclick_button.configure(text="Stop auto click")
+        self._set_status("● AUTO CLICKING", "#7A5AF8")
+        self._log(
+            f"Auto click started at {position[0]}, {position[1]} "
+            f"({repeat if repeat != -1 else 'infinite'} clicks, {clicks_per_second:g} CPS)"
+        )
+        self.autoclick.start(position, repeat, clicks_per_second, self._autoclick_finished)
+
+    def _cancel_autoclick_countdown(self) -> None:
+        if self._autoclick_after_id:
+            self.after_cancel(self._autoclick_after_id)
+        self._autoclick_after_id = None
+        self._autoclick_pending = False
+        self._restore_autoclick_ui()
+        self._log("Auto-click countdown cancelled")
+
+    def _autoclick_finished(self, error: str | None, stopped: bool, completed: int) -> None:
+        self._post_ui(self._finish_autoclick_ui, error, stopped, completed)
+
+    def _finish_autoclick_ui(self, error: str | None, stopped: bool, completed: int) -> None:
+        self._restore_autoclick_ui()
+        if error:
+            self._log(f"Auto click failed after {completed} clicks: {error}")
+            messagebox.showerror("Auto click failed", error)
+        else:
+            action = "stopped" if stopped else "finished"
+            self._log(f"Auto click {action} ({completed} clicks)")
+
+    def _restore_autoclick_ui(self) -> None:
+        self.record_button.configure(state="normal")
+        self.play_button.configure(state="normal")
+        self.autoclick_button.configure(text="Start auto click", state="normal")
+        self._set_status("● READY", ("#667085", "#98A2B3"))
+
     def _assign_hotkey(self, target: str) -> None:
         self.assigning_hotkey = target
-        button = self.record_hotkey_button if target == "record" else self.play_hotkey_button
+        buttons = {
+            "record": self.record_hotkey_button,
+            "play": self.play_hotkey_button,
+            "autoclick": self.autoclick_hotkey_button,
+        }
+        button = buttons[target]
         button.configure(text="Press a key…")
 
     def _finish_hotkey_assignment(self, name: str) -> None:
         target = self.assigning_hotkey
         self.assigning_hotkey = None
-        if target == "record":
-            if name == self.play_hotkey:
-                messagebox.showerror("Duplicate hotkey", "Record and play hotkeys must be different.")
+        attributes = {
+            "record": "record_hotkey",
+            "play": "play_hotkey",
+            "autoclick": "autoclick_hotkey",
+        }
+        if target in attributes:
+            other_hotkeys = {
+                getattr(self, attribute)
+                for other_target, attribute in attributes.items()
+                if other_target != target
+            }
+            if name in other_hotkeys:
+                messagebox.showerror("Duplicate hotkey", "Record, play, and auto-click hotkeys must be different.")
             else:
-                self.record_hotkey = name
-        elif target == "play":
-            if name == self.record_hotkey:
-                messagebox.showerror("Duplicate hotkey", "Record and play hotkeys must be different.")
-            else:
-                self.play_hotkey = name
+                setattr(self, attributes[target], name)
         self.record_hotkey_button.configure(text=f"Record: {self.record_hotkey.upper()}")
         self.play_hotkey_button.configure(text=f"Play: {self.play_hotkey.upper()}")
+        self.autoclick_hotkey_button.configure(text=f"Hotkey: {self.autoclick_hotkey.upper()}")
 
     def save_current(self) -> None:
         if not self.events:
@@ -311,7 +510,7 @@ class AutoIOApp(ctk.CTk):
             messagebox.showerror("Import failed", str(exc))
 
     def _load_saved(self, path: Path, play: bool = False) -> None:
-        if self.recording or self.playback.active:
+        if self.recording or self.playback.active or self.autoclick.active or self._autoclick_pending:
             return
         try:
             with self._event_lock:
@@ -395,7 +594,12 @@ class AutoIOApp(ctk.CTk):
             )
 
     def _close(self) -> None:
+        if self._autoclick_after_id:
+            self.after_cancel(self._autoclick_after_id)
+        if self._capture_after_id:
+            self.after_cancel(self._capture_after_id)
         self.playback.stop()
+        self.autoclick.stop()
         self.keyboard_listener.stop()
         self.mouse_listener.stop()
         self.destroy()

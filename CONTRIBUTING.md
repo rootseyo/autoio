@@ -17,6 +17,7 @@ ruff check .
 ## 프로젝트 구조
 
 - `auto_io/app.py`: GUI, 녹화와 사용자 상호작용
+- `auto_io/autoclick.py`: 속도 제한과 중단을 지원하는 오토 클릭 엔진
 - `auto_io/playback.py`: 중단 가능한 재생 엔진과 입력 정리
 - `auto_io/events.py`: 버전형 JSON 스키마, 검증, 기존 형식 호환
 - `auto_io/storage.py`: OS별 사용자 데이터 저장소
