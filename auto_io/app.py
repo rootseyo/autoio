@@ -89,84 +89,16 @@ class AutoIOApp(ctk.CTk):
         left = ctk.CTkFrame(self)
         left.grid(row=1, column=0, sticky="nsew", padx=(24, 8), pady=(8, 24))
         left.grid_columnconfigure((0, 1), weight=1)
-        left.grid_rowconfigure(5, weight=1)
+        left.grid_rowconfigure(3, weight=1)
 
-        self.record_button = ctk.CTkButton(
-            left,
-            text="Record",
-            height=46,
-            fg_color=RECORD_COLOR,
-            hover_color=RECORD_HOVER_COLOR,
-            command=self.toggle_recording,
-        )
-        self.record_button.grid(row=0, column=0, sticky="ew", padx=(18, 8), pady=(18, 10))
-        self.play_button = ctk.CTkButton(
-            left,
-            text="Play",
-            height=46,
-            fg_color=PLAY_COLOR,
-            hover_color=PLAY_HOVER_COLOR,
-            command=self.toggle_playback,
-        )
-        self.play_button.grid(row=0, column=1, sticky="ew", padx=(8, 18), pady=(18, 10))
-
-        ctk.CTkButton(
-            left,
-            text="Save macro",
-            fg_color=MACRO_COLOR,
-            hover_color=MACRO_HOVER_COLOR,
-            command=self.save_current,
-        ).grid(
-            row=1, column=0, sticky="ew", padx=(18, 8), pady=8
-        )
-        ctk.CTkButton(
-            left,
-            text="Import JSON",
-            fg_color=MACRO_COLOR,
-            hover_color=MACRO_HOVER_COLOR,
-            command=self.import_macro,
-        ).grid(
-            row=1, column=1, sticky="ew", padx=(8, 18), pady=8
-        )
-
-        settings = ctk.CTkFrame(left, fg_color="transparent")
-        settings.grid(row=2, column=0, columnspan=2, sticky="ew", padx=18, pady=10)
-        ctk.CTkLabel(settings, text="Repeat").pack(side="left")
-        self.repeat_entry = ctk.CTkEntry(settings, width=70, justify="center")
-        self.repeat_entry.insert(0, "1")
-        self.repeat_entry.pack(side="left", padx=(8, 8))
-        ctk.CTkLabel(
-            settings,
-            text="0/-1 = unlimited",
-            text_color=("#667085", "#98A2B3"),
-            font=ctk.CTkFont(size=11),
-        ).pack(side="left", padx=(0, 8))
-        self.record_hotkey_button = ctk.CTkButton(
-            settings,
-            width=105,
-            text="Record: F8",
-            fg_color=RECORD_COLOR,
-            hover_color=RECORD_HOVER_COLOR,
-            command=lambda: self._assign_hotkey("record"),
-        )
-        self.record_hotkey_button.pack(side="left", padx=4)
-        self.play_hotkey_button = ctk.CTkButton(
-            settings,
-            width=105,
-            text="Play: F9",
-            fg_color=PLAY_COLOR,
-            hover_color=PLAY_HOVER_COLOR,
-            command=lambda: self._assign_hotkey("play"),
-        )
-        self.play_hotkey_button.pack(side="left", padx=4)
-
+        self._build_record_ui(left)
         self._build_autoclick_ui(left)
 
         ctk.CTkLabel(left, text="Activity", font=ctk.CTkFont(weight="bold")).grid(
-            row=4, column=0, columnspan=2, sticky="w", padx=18, pady=(8, 4)
+            row=2, column=0, columnspan=2, sticky="w", padx=18, pady=(8, 4)
         )
         self.log_box = ctk.CTkTextbox(left, state="disabled")
-        self.log_box.grid(row=5, column=0, columnspan=2, sticky="nsew", padx=18, pady=(0, 18))
+        self.log_box.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=18, pady=(0, 18))
 
         right = ctk.CTkFrame(self)
         right.grid(row=1, column=1, sticky="nsew", padx=(8, 24), pady=(8, 24))
@@ -179,9 +111,97 @@ class AutoIOApp(ctk.CTk):
         self.macro_list.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
         self._refresh_macros()
 
+    def _build_record_ui(self, parent: ctk.CTkFrame) -> None:
+        card = ctk.CTkFrame(
+            parent,
+            border_width=1,
+            border_color=("#D0D5DD", "#3F4652"),
+        )
+        card.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(18, 6))
+        card.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        ctk.CTkLabel(card, text="Record & playback", font=ctk.CTkFont(weight="bold")).grid(
+            row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(10, 4)
+        )
+        self.record_button = ctk.CTkButton(
+            card,
+            text="Record",
+            height=46,
+            fg_color=RECORD_COLOR,
+            hover_color=RECORD_HOVER_COLOR,
+            command=self.toggle_recording,
+        )
+        self.record_button.grid(row=1, column=0, columnspan=2, sticky="ew", padx=(12, 4), pady=(4, 8))
+        self.play_button = ctk.CTkButton(
+            card,
+            text="Play",
+            height=46,
+            fg_color=PLAY_COLOR,
+            hover_color=PLAY_HOVER_COLOR,
+            command=self.toggle_playback,
+        )
+        self.play_button.grid(row=1, column=2, columnspan=2, sticky="ew", padx=(4, 12), pady=(4, 8))
+
+        ctk.CTkButton(
+            card,
+            text="Save macro",
+            fg_color=MACRO_COLOR,
+            hover_color=MACRO_HOVER_COLOR,
+            command=self.save_current,
+        ).grid(
+            row=2, column=0, columnspan=2, sticky="ew", padx=(12, 4), pady=4
+        )
+        ctk.CTkButton(
+            card,
+            text="Import JSON",
+            fg_color=MACRO_COLOR,
+            hover_color=MACRO_HOVER_COLOR,
+            command=self.import_macro,
+        ).grid(
+            row=2, column=2, columnspan=2, sticky="ew", padx=(4, 12), pady=4
+        )
+
+        ctk.CTkLabel(card, text="Repeat").grid(row=3, column=0, sticky="e", padx=(12, 4), pady=(8, 4))
+        self.repeat_entry = ctk.CTkEntry(card, width=70, justify="center")
+        self.repeat_entry.insert(0, "1")
+        self.repeat_entry.grid(row=3, column=1, sticky="ew", padx=(0, 8), pady=(8, 4))
+        ctk.CTkLabel(
+            card,
+            text="0/-1 = unlimited",
+            text_color=("#667085", "#98A2B3"),
+            font=ctk.CTkFont(size=11),
+        ).grid(row=3, column=2, columnspan=2, sticky="w", padx=(4, 12), pady=(8, 4))
+
+        self.record_hotkey_button = ctk.CTkButton(
+            card,
+            width=105,
+            text="Record: F8",
+            fg_color=RECORD_COLOR,
+            hover_color=RECORD_HOVER_COLOR,
+            command=lambda: self._assign_hotkey("record"),
+        )
+        self.record_hotkey_button.grid(
+            row=4, column=0, columnspan=2, sticky="ew", padx=(12, 4), pady=(4, 10)
+        )
+        self.play_hotkey_button = ctk.CTkButton(
+            card,
+            width=105,
+            text="Play: F9",
+            fg_color=PLAY_COLOR,
+            hover_color=PLAY_HOVER_COLOR,
+            command=lambda: self._assign_hotkey("play"),
+        )
+        self.play_hotkey_button.grid(
+            row=4, column=2, columnspan=2, sticky="ew", padx=(4, 12), pady=(4, 10)
+        )
+
     def _build_autoclick_ui(self, parent: ctk.CTkFrame) -> None:
-        card = ctk.CTkFrame(parent)
-        card.grid(row=3, column=0, columnspan=2, sticky="ew", padx=18, pady=(4, 6))
+        card = ctk.CTkFrame(
+            parent,
+            border_width=1,
+            border_color=("#D0D5DD", "#3F4652"),
+        )
+        card.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=6)
         card.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
         ctk.CTkLabel(card, text="Auto click", font=ctk.CTkFont(weight="bold")).grid(
@@ -236,16 +256,18 @@ class AutoIOApp(ctk.CTk):
             hover_color=AUTOCLICK_HOVER_COLOR,
             command=self.toggle_autoclick,
         )
-        self.autoclick_button.grid(row=4, column=0, columnspan=3, sticky="ew", padx=(12, 4), pady=(4, 10))
+        self.autoclick_button.grid(row=4, column=0, columnspan=2, sticky="ew", padx=(12, 4), pady=(4, 10))
         self.autoclick_hotkey_button = ctk.CTkButton(
             card,
-            text="Hotkey: F10",
+            text="Start/Stop: F10",
             width=105,
             fg_color=AUTOCLICK_COLOR,
             hover_color=AUTOCLICK_HOVER_COLOR,
             command=lambda: self._assign_hotkey("autoclick"),
         )
-        self.autoclick_hotkey_button.grid(row=4, column=3, sticky="ew", padx=(4, 12), pady=(4, 10))
+        self.autoclick_hotkey_button.grid(
+            row=4, column=2, columnspan=2, sticky="ew", padx=(4, 12), pady=(4, 10)
+        )
         self._autoclick_mode_changed("Free click")
 
     def _start_listeners(self) -> None:
@@ -549,7 +571,7 @@ class AutoIOApp(ctk.CTk):
                 setattr(self, attributes[target], name)
         self.record_hotkey_button.configure(text=f"Record: {self.record_hotkey.upper()}")
         self.play_hotkey_button.configure(text=f"Play: {self.play_hotkey.upper()}")
-        self.autoclick_hotkey_button.configure(text=f"Hotkey: {self.autoclick_hotkey.upper()}")
+        self.autoclick_hotkey_button.configure(text=f"Start/Stop: {self.autoclick_hotkey.upper()}")
 
     def save_current(self) -> None:
         if not self.events:
