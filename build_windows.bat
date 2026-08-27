@@ -19,7 +19,7 @@ echo [2/3] Running tests...
 if %errorlevel% neq 0 goto :error
 
 echo [3/3] Building AutoIO-Windows.exe...
-%PYTHON_CMD% -m PyInstaller --clean --noconfirm --onefile --windowed --collect-all customtkinter --name "AutoIO-Windows" auto_kb_mouse.py
+%PYTHON_CMD% -m PyInstaller --clean --noconfirm --onefile --windowed --collect-all customtkinter --icon "assets\autoio.ico" --name "AutoIO-Windows" auto_kb_mouse.py
 if %errorlevel% neq 0 goto :error
 
 echo Build complete: dist\AutoIO-Windows.exe

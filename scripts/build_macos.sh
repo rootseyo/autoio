@@ -16,6 +16,7 @@ echo "[3/3] Building AutoIO.app..."
   --noconfirm \
   --windowed \
   --collect-all customtkinter \
+  --icon "assets/autoio.icns" \
   --osx-bundle-identifier "io.github.rootseyo.autoio" \
   --name "AutoIO" \
   auto_kb_mouse.py

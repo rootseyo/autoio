@@ -57,7 +57,7 @@ jobs:
       - name: Build macOS app
         if: runner.os == 'macOS'
         run: |
-          python -m PyInstaller --clean --noconfirm --windowed --collect-all customtkinter --osx-bundle-identifier io.github.rootseyo.autoio --name AutoIO auto_kb_mouse.py
+          python -m PyInstaller --clean --noconfirm --windowed --collect-all customtkinter --icon assets/autoio.icns --osx-bundle-identifier io.github.rootseyo.autoio --name AutoIO auto_kb_mouse.py
           APP_VERSION="$(python -c 'from auto_io import __version__; print(__version__)')"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" dist/AutoIO.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${APP_VERSION}" dist/AutoIO.app/Contents/Info.plist
@@ -65,7 +65,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent dist/AutoIO.app dist/AutoIO-macOS.zip
       - name: Build Windows app
         if: runner.os == 'Windows'
-        run: python -m PyInstaller --clean --noconfirm --onefile --windowed --collect-all customtkinter --name AutoIO-Windows auto_kb_mouse.py
+        run: python -m PyInstaller --clean --noconfirm --onefile --windowed --collect-all customtkinter --icon assets/autoio.ico --name AutoIO-Windows auto_kb_mouse.py
       - uses: actions/upload-artifact@v7
         if: runner.os == 'macOS'
         with:
