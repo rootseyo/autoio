@@ -2,6 +2,9 @@ name: Build applications
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
   release:
     types: [published]
 
@@ -9,7 +12,27 @@ permissions:
   contents: write
 
 jobs:
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Validate release tag
+        shell: bash
+        run: |
+          APP_VERSION="$(python -c 'from auto_io import __version__; print(__version__)')"
+          test "${GITHUB_REF_NAME}" = "v${APP_VERSION}"
+      - name: Publish release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --verify-tag --title "AutoIO ${GITHUB_REF_NAME}" --notes-file RELEASE_NOTES.md
+
   build:
+    needs: release
+    if: always() && (needs.release.result == 'success' || needs.release.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -50,12 +73,14 @@ jobs:
           path: dist/AutoIO-Windows.exe
           if-no-files-found: error
       - name: Attach macOS app to release
-        if: github.event_name == 'release' && runner.os == 'macOS'
+        if: (github.event_name == 'release' || github.event_name == 'push') && runner.os == 'macOS'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/AutoIO-macOS.zip --clobber
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: gh release upload "${RELEASE_TAG}" dist/AutoIO-macOS.zip --clobber
       - name: Attach Windows app to release
-        if: github.event_name == 'release' && runner.os == 'Windows'
+        if: (github.event_name == 'release' || github.event_name == 'push') && runner.os == 'Windows'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/AutoIO-Windows.exe --clobber
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: gh release upload "${RELEASE_TAG}" dist/AutoIO-Windows.exe --clobber
