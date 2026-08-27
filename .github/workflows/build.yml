@@ -82,11 +82,9 @@ jobs:
         if: (github.event_name == 'release' || github.event_name == 'push') && runner.os == 'macOS'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
-        run: gh release upload "${RELEASE_TAG}" dist/AutoIO-macOS.zip --clobber
+        run: gh release upload "${{ github.event.release.tag_name || github.ref_name }}" dist/AutoIO-macOS.zip --clobber
       - name: Attach Windows app to release
         if: (github.event_name == 'release' || github.event_name == 'push') && runner.os == 'Windows'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
-        run: gh release upload "${RELEASE_TAG}" dist/AutoIO-Windows.exe --clobber
+        run: gh release upload "${{ github.event.release.tag_name || github.ref_name }}" dist/AutoIO-Windows.exe --clobber
