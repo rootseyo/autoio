@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections.abc import Callable
 from typing import Any
 
+from .events import describe_event
 from .platform_support import prepare_macos_accessibility_imports
 
 prepare_macos_accessibility_imports()
@@ -29,16 +31,25 @@ class PlaybackController:
     def active(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
 
-    def start(self, events: list[dict], repeat: int, log: LogCallback, finished: FinishCallback) -> None:
+    def start(
+        self,
+        events: list[dict],
+        repeat: int,
+        log: LogCallback,
+        finished: FinishCallback,
+        repeat_delay_ms: float = 0.0,
+    ) -> None:
         if self.active:
             raise RuntimeError("playback is already running")
         if repeat < -1:
             raise ValueError("repeat must be a positive integer, 0, or -1")
+        if not math.isfinite(repeat_delay_ms) or repeat_delay_ms < 0:
+            raise ValueError("repeat delay must be a non-negative finite number")
         normalized_repeat = -1 if repeat == 0 else repeat
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run,
-            args=(events, normalized_repeat, log, finished),
+            args=(events, normalized_repeat, log, finished, repeat_delay_ms),
             name="macro-playback",
             daemon=True,
         )
@@ -47,7 +58,14 @@ class PlaybackController:
     def stop(self) -> None:
         self._stop.set()
 
-    def _run(self, events: list[dict], repeat: int, log: LogCallback, finished: FinishCallback) -> None:
+    def _run(
+        self,
+        events: list[dict],
+        repeat: int,
+        log: LogCallback,
+        finished: FinishCallback,
+        repeat_delay_ms: float = 0.0,
+    ) -> None:
         error: str | None = None
         loop = 0
         try:
@@ -60,6 +78,11 @@ class PlaybackController:
                     if self._stop.wait(delay):
                         break
                     self._execute(event)
+                    log(f"Played: {describe_event(event)}")
+                if self._stop.is_set() or (repeat != -1 and loop >= repeat):
+                    break
+                if self._stop.wait(repeat_delay_ms / 1000.0):
+                    break
         except Exception as exc:  # Hardware/API failures need to reach the GUI.
             error = str(exc)
         finally:

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from auto_io.events import MacroFormatError, load_macro, normalize_document, write_macro
+from auto_io.events import MacroFormatError, describe_event, load_macro, normalize_document, write_macro
 
 
 class MacroEventTests(unittest.TestCase):
@@ -63,6 +63,31 @@ class MacroEventTests(unittest.TestCase):
     def test_rejects_non_finite_time(self) -> None:
         with self.assertRaises(MacroFormatError):
             normalize_document([{"type": "mouse_move", "time": float("nan"), "x": 1, "y": 2}])
+
+    def test_describes_every_io_event_type(self) -> None:
+        events = [
+            ({"type": "mouse_move", "x": 1, "y": 2}, "Mouse moved to (1, 2)"),
+            (
+                {"type": "mouse_click", "x": 1, "y": 2, "button": "left", "pressed": True},
+                "Mouse left button down at (1, 2)",
+            ),
+            (
+                {"type": "mouse_scroll", "x": 1, "y": 2, "dx": 0, "dy": -1},
+                "Mouse scrolled dx=0, dy=-1 at (1, 2)",
+            ),
+            (
+                {"type": "key_down", "key": {"kind": "character", "char": "a", "vk": 0}},
+                "Keyboard 'a' down",
+            ),
+            (
+                {"type": "key_up", "key": {"kind": "special", "name": "enter"}},
+                "Keyboard ENTER up",
+            ),
+        ]
+
+        for event, expected in events:
+            with self.subTest(event_type=event["type"]):
+                self.assertEqual(describe_event(event), expected)
 
 
 if __name__ == "__main__":

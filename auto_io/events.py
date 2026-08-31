@@ -101,6 +101,28 @@ def normalize_event(raw: Any) -> dict[str, Any]:
     return event
 
 
+def describe_event(event: dict[str, Any]) -> str:
+    """Return a compact Activity-log description for a normalized I/O event."""
+    event_type = event["type"]
+    if event_type == "mouse_move":
+        return f"Mouse moved to ({event['x']}, {event['y']})"
+    if event_type == "mouse_click":
+        action = "down" if event["pressed"] else "up"
+        return f"Mouse {event['button']} button {action} at ({event['x']}, {event['y']})"
+    if event_type == "mouse_scroll":
+        return f"Mouse scrolled dx={event['dx']}, dy={event['dy']} at ({event['x']}, {event['y']})"
+
+    key = event["key"]
+    if key["kind"] == "special":
+        key_label = key["name"].upper()
+    elif key.get("char") is not None:
+        key_label = repr(key["char"])
+    else:
+        key_label = f"VK {key['vk']}"
+    action = "down" if event_type == "key_down" else "up"
+    return f"Keyboard {key_label} {action}"
+
+
 def normalize_document(raw: Any) -> list[dict[str, Any]]:
     """Load a schema v1 document or the legacy bare event list."""
     if isinstance(raw, list):

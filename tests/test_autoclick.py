@@ -28,12 +28,27 @@ class AutoClickTests(unittest.TestCase):
         mouse = FakeMouse()
         controller = AutoClickController(mouse)
         result = []
+        logs = []
 
-        controller._run((120, 340), 3, 1, lambda error, stopped, count: result.append((error, stopped, count)))
+        controller._run(
+            (120, 340),
+            3,
+            1,
+            lambda error, stopped, count: result.append((error, stopped, count)),
+            logs.append,
+        )
 
         self.assertEqual([position for position, _button in mouse.clicks], [(120, 340)] * 3)
         self.assertEqual(mouse.positions_set, [(120, 340)] * 3)
         self.assertEqual(result, [(None, False, 3)])
+        self.assertEqual(
+            logs,
+            [
+                "Auto click 1: Mouse left click at (120, 340)",
+                "Auto click 2: Mouse left click at (120, 340)",
+                "Auto click 3: Mouse left click at (120, 340)",
+            ],
+        )
 
     def test_free_click_does_not_overwrite_cursor_position(self) -> None:
         mouse = FakeMouse()

@@ -12,6 +12,7 @@ prepare_macos_accessibility_imports()
 from pynput import mouse  # noqa: E402
 
 FinishCallback = Callable[[str | None, bool, int], None]
+LogCallback = Callable[[str], None]
 
 
 class AutoClickController:
@@ -35,6 +36,7 @@ class AutoClickController:
         repeat: int,
         interval_ms: float,
         finished: FinishCallback,
+        log: LogCallback | None = None,
     ) -> None:
         if self.active:
             raise RuntimeError("auto click is already running")
@@ -50,7 +52,7 @@ class AutoClickController:
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run,
-            args=(position, normalized_repeat, interval_ms, finished),
+            args=(position, normalized_repeat, interval_ms, finished, log),
             name="auto-click",
             daemon=True,
         )
@@ -65,6 +67,7 @@ class AutoClickController:
         repeat: int,
         interval_ms: float,
         finished: FinishCallback,
+        log: LogCallback | None = None,
     ) -> None:
         error: str | None = None
         completed = 0
@@ -78,6 +81,9 @@ class AutoClickController:
                     self.mouse.position = position
                 self.mouse.click(mouse.Button.left)
                 completed += 1
+                if log is not None:
+                    x, y = self.mouse.position
+                    log(f"Auto click {completed}: Mouse left click at ({int(x)}, {int(y)})")
                 deadline = max(deadline + interval, time.monotonic())
         except Exception as exc:  # Hardware/API failures need to reach the GUI.
             error = str(exc)

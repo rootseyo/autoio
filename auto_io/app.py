@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import queue
 import threading
 import time
@@ -12,7 +13,7 @@ from typing import Any
 
 import customtkinter as ctk
 
-from .events import MacroFormatError
+from .events import MacroFormatError, describe_event
 from .platform_support import (
     macos_accessibility_granted,
     prepare_macos_accessibility_imports,
@@ -64,14 +65,11 @@ class AutoIOApp(ctk.CTk):
         self._event_lock = threading.Lock()
         self._ui_queue: queue.Queue[tuple[Callable[..., None], tuple[Any, ...]]] = queue.Queue()
         self._window_bounds = (0, 0, 0, 0)
-        self._app_has_focus = True
 
         self._build_ui()
         self._start_listeners()
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Configure>", self._cache_window_bounds)
-        self.bind_all("<FocusIn>", self._cache_focus)
-        self.bind_all("<FocusOut>", self._cache_focus)
         self.after(10, self._drain_ui_queue)
         self.after(400, self._check_macos_permissions)
 
@@ -172,6 +170,19 @@ class AutoIOApp(ctk.CTk):
             font=ctk.CTkFont(size=11),
         ).grid(row=3, column=2, columnspan=2, sticky="w", padx=(4, 12), pady=(8, 4))
 
+        ctk.CTkLabel(card, text="Repeat delay (ms)").grid(
+            row=4, column=0, sticky="e", padx=(12, 4), pady=4
+        )
+        self.repeat_delay_entry = ctk.CTkEntry(card, width=70, justify="center")
+        self.repeat_delay_entry.insert(0, "0")
+        self.repeat_delay_entry.grid(row=4, column=1, sticky="ew", padx=(0, 8), pady=4)
+        ctk.CTkLabel(
+            card,
+            text="between loops",
+            text_color=("#667085", "#98A2B3"),
+            font=ctk.CTkFont(size=11),
+        ).grid(row=4, column=2, columnspan=2, sticky="w", padx=(4, 12), pady=4)
+
         self.record_hotkey_button = ctk.CTkButton(
             card,
             width=105,
@@ -181,7 +192,7 @@ class AutoIOApp(ctk.CTk):
             command=lambda: self._assign_hotkey("record"),
         )
         self.record_hotkey_button.grid(
-            row=4, column=0, columnspan=2, sticky="ew", padx=(12, 4), pady=(4, 10)
+            row=5, column=0, columnspan=2, sticky="ew", padx=(12, 4), pady=(4, 10)
         )
         self.play_hotkey_button = ctk.CTkButton(
             card,
@@ -192,7 +203,7 @@ class AutoIOApp(ctk.CTk):
             command=lambda: self._assign_hotkey("play"),
         )
         self.play_hotkey_button.grid(
-            row=4, column=2, columnspan=2, sticky="ew", padx=(4, 12), pady=(4, 10)
+            row=5, column=2, columnspan=2, sticky="ew", padx=(4, 12), pady=(4, 10)
         )
 
     def _build_autoclick_ui(self, parent: ctk.CTkFrame) -> None:
@@ -310,7 +321,7 @@ class AutoIOApp(ctk.CTk):
                 elif name == self.autoclick_hotkey:
                     self._post_ui(self.toggle_autoclick)
             return
-        if self.recording and not self._app_has_focus:
+        if self.recording:
             self._append_event("key_down", key=self._serialize_key(key))
 
     def _key_release(self, key: Any) -> None:
@@ -318,7 +329,7 @@ class AutoIOApp(ctk.CTk):
         if name in {self.record_hotkey, self.play_hotkey, self.autoclick_hotkey}:
             self._hotkeys_down.discard(name)
             return
-        if self.recording and not self.assigning_hotkey and not self._app_has_focus:
+        if self.recording and not self.assigning_hotkey:
             self._append_event("key_up", key=self._serialize_key(key))
 
     def _mouse_move(self, x: int, y: int) -> None:
@@ -328,7 +339,6 @@ class AutoIOApp(ctk.CTk):
     def _mouse_click(self, x: int, y: int, button: Any, pressed: bool) -> None:
         if self.recording and not self._inside_app(x, y):
             self._append_event("mouse_click", x=int(x), y=int(y), button=button.name, pressed=bool(pressed))
-            self._thread_log(f"Mouse {button.name} {'down' if pressed else 'up'} at {x}, {y}")
 
     def _mouse_scroll(self, x: int, y: int, dx: int, dy: int) -> None:
         if self.recording and not self._inside_app(x, y):
@@ -343,15 +353,11 @@ class AutoIOApp(ctk.CTk):
         top = self.winfo_rooty()
         self._window_bounds = (left, top, left + self.winfo_width(), top + self.winfo_height())
 
-    def _cache_focus(self, _event: Any = None) -> None:
-        self.after_idle(self._update_focus_cache)
-
-    def _update_focus_cache(self) -> None:
-        self._app_has_focus = self.focus_get() is not None
-
     def _append_event(self, event_type: str, **values: Any) -> None:
         with self._event_lock:
-            self.events.append({"type": event_type, "time": time.monotonic() - self.recording_started, **values})
+            event = {"type": event_type, "time": time.monotonic() - self.recording_started, **values}
+            self.events.append(event)
+            self._thread_log(f"Recorded: {describe_event(event)}")
 
     def toggle_recording(self) -> None:
         if self.playback.active or self.autoclick.active or self._autoclick_pending:
@@ -384,10 +390,16 @@ class AutoIOApp(ctk.CTk):
             return
         try:
             repeat = int(self.repeat_entry.get().strip() or "1")
+            repeat_delay_ms = float(self.repeat_delay_entry.get().strip() or "0")
             if repeat < -1:
                 raise ValueError
+            if not math.isfinite(repeat_delay_ms) or repeat_delay_ms < 0:
+                raise ValueError
         except ValueError:
-            messagebox.showerror("Invalid repeat", "Enter a positive integer, 0, or -1 for unlimited playback.")
+            messagebox.showerror(
+                "Invalid repeat settings",
+                "Repeat must be a positive integer, 0, or -1. Repeat delay must be 0 or more milliseconds.",
+            )
             return
         repeat = -1 if repeat == 0 else repeat
 
@@ -397,7 +409,13 @@ class AutoIOApp(ctk.CTk):
         self._set_status("● PLAYING", PLAY_COLOR)
         with self._event_lock:
             events = self.events.copy()
-        self.playback.start(events, repeat, self._thread_log, self._playback_finished)
+        self.playback.start(
+            events,
+            repeat,
+            self._thread_log,
+            self._playback_finished,
+            repeat_delay_ms=repeat_delay_ms,
+        )
 
     def _playback_finished(self, error: str | None, stopped: bool) -> None:
         self._post_ui(self._finish_playback_ui, error, stopped)
@@ -513,7 +531,7 @@ class AutoIOApp(ctk.CTk):
             f"Auto click started {location} "
             f"({repeat if repeat != -1 else 'infinite'} clicks, {interval_ms:g} ms interval)"
         )
-        self.autoclick.start(position, repeat, interval_ms, self._autoclick_finished)
+        self.autoclick.start(position, repeat, interval_ms, self._autoclick_finished, self._thread_log)
 
     def _cancel_autoclick_countdown(self) -> None:
         if self._autoclick_after_id:
@@ -673,17 +691,30 @@ class AutoIOApp(ctk.CTk):
         self._ui_queue.put((callback, args))
 
     def _drain_ui_queue(self) -> None:
-        try:
-            while True:
+        pending_logs: list[str] = []
+        for _ in range(500):
+            try:
                 callback, args = self._ui_queue.get_nowait()
-                callback(*args)
-        except queue.Empty:
-            pass
+            except queue.Empty:
+                break
+            if callback == self._log and len(args) == 1:
+                pending_logs.append(str(args[0]))
+                continue
+            self._write_logs(pending_logs)
+            pending_logs.clear()
+            callback(*args)
+        self._write_logs(pending_logs)
         self.after(10, self._drain_ui_queue)
 
     def _log(self, message: str) -> None:
+        self._write_logs([message])
+
+    def _write_logs(self, messages: list[str]) -> None:
+        if not messages:
+            return
+        timestamp = time.strftime("%H:%M:%S")
         self.log_box.configure(state="normal")
-        self.log_box.insert("end", f"[{time.strftime('%H:%M:%S')}] {message}\n")
+        self.log_box.insert("end", "".join(f"[{timestamp}] {message}\n" for message in messages))
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
 
